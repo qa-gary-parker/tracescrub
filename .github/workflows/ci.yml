@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
+
+  action:
+    name: composite action against fixtures
+    runs-on: ubuntu-latest
+    env:
+      # The fake password planted in the fixtures, passed by name like a real secret would be.
+      TEST_PASSWORD: tsk_FAKE_Passw0rd_9f3a7c
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: check mode on the fixtures (expected to fail)
+        id: check
+        uses: ./
+        continue-on-error: true
+        with:
+          paths: test/fixtures
+          mode: check
+          env-names: TEST_PASSWORD
+
+      - name: assert the check failed with findings
+        env:
+          OUTCOME: ${{ steps.check.outcome }}
+          FINDINGS: ${{ steps.check.outputs.findings }}
+          CODE: ${{ steps.check.outputs.exit-code }}
+        run: |
+          echo "outcome=$OUTCOME findings=$FINDINGS exit-code=$CODE"
+          test "$OUTCOME" = failure
+          test "$CODE" = 1
+          test "$FINDINGS" -gt 0
+
+      - name: check mode with fail-on-findings false (expected to pass)
+        id: soft
+        uses: ./
+        with:
+          paths: test/fixtures/storageState.json
+          fail-on-findings: 'false'
+
+      - name: assert soft check reported findings
+        env:
+          FINDINGS: ${{ steps.soft.outputs.findings }}
+        run: test "$FINDINGS" -gt 0
+
+      - name: copy fixtures to a fake artifacts dir
+        run: |
+          mkdir -p "$RUNNER_TEMP/artifacts"
+          cp -R test/fixtures/. "$RUNNER_TEMP/artifacts/"
+
+      - name: scrub before upload
+        uses: ./
+        with:
+          paths: ${{ runner.temp }}/artifacts
+          mode: scrub
+          env-names: TEST_PASSWORD
+
+      - name: check the scrubbed artifacts (expected to pass)
+        uses: ./
+        with:
+          paths: ${{ runner.temp }}/artifacts
+          mode: check
+          env-names: TEST_PASSWORD
+
+      - name: upload the scrubbed artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: scrubbed-fixtures
+          path: ${{ runner.temp }}/artifacts
+          retention-days: 1
+
+  viewer:
+    name: scrubbed trace opens in the trace viewer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run verify:viewer
