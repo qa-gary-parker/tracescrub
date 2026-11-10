@@ -83,7 +83,8 @@ export class Detector implements RuleContext {
   /** Register a literal secret. Returns false when it was ignored (too short, allowlisted, duplicate). */
   addKnown(value: string, rule: string): boolean {
     if (typeof value !== 'string') return false;
-    const v = value.trim();
+    // "Bearer <token>" -> remember just the token, so the scheme stays readable elsewhere.
+    const v = value.trim().replace(/^(?:Bearer|Basic|Token)\s+/i, '');
     if (v.length < this.minKnownLength || isRedacted(v) || this.isAllowed(v)) return false;
     if (this.known.has(v)) return false;
     this.known.set(v, rule);

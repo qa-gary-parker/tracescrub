@@ -31,7 +31,7 @@ export function isRedacted(value: string): boolean {
 
 /** Key names that look sensitive. Matched case-insensitively against the whole key. */
 export const SENSITIVE_KEY_RE =
-  /pass(?:word|wd|phrase|code)?(?![a-z])|pwd|secret|token|api[-_]?key|apikey|auth(?!or)|session|sessid|(?:^|[^a-z])sid(?:$|[^a-z])|credential|private[-_]?key|access[-_]?key|jwt|bearer|csrf|xsrf|(?:^|[^a-z])otp(?:$|[^a-z])/i;
+  /pass(?:word|wd|phrase|code)?(?![a-z])|pwd|secret|token|api[-_]?key|apikey|auth(?!or(?:s|ed|ship)?(?![a-z]))|session|sessid|(?:^|[^a-z])sid(?:$|[^a-z])|credential|private[-_]?key|access[-_]?key|jwt|bearer|csrf|xsrf|(?:^|[^a-z])otp(?:$|[^a-z])/i;
 
 /** Key names that contain a sensitive word but describe metadata rather than a secret. */
 export const NON_SECRET_KEY_RE =
