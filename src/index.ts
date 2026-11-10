@@ -1,0 +1,12 @@
+export { Detector, applyHits, redactionTag } from './detector.js';
+export type { DetectorOptions, KnownValue, CustomPattern, Hit } from './detector.js';
+export { scanFiles, scanText } from './engine.js';
+export type { Finding, FileResult, ScanOptions } from './engine.js';
+export { discover } from './discover.js';
+export { loadConfig, parseEnvFile, buildDetectorOptions, validateConfig } from './config.js';
+export type { TracescrubConfig } from './config.js';
+export { scrubJson, detectKind } from './structural.js';
+export { processContent } from './formats.js';
+export { mask } from './mask.js';
+export { main } from './main.js';
+export { UsageError } from './errors.js';
