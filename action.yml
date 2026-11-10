@@ -62,7 +62,8 @@ runs:
         TS_CONFIG: ${{ inputs.config }}
         TS_FAIL: ${{ inputs.fail-on-findings }}
       run: |
-        set -uo pipefail
+        # The runner starts bash with -e; turn it off so exit codes can be inspected.
+        set +e -uo pipefail
         report="${RUNNER_TEMP:-/tmp}/tracescrub-report.json"
 
         args=()
