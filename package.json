@@ -45,7 +45,8 @@
     "lint": "npm run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fixtures:gen": "node fixtures-gen/generate.mjs"
+    "fixtures:gen": "node fixtures-gen/generate.mjs",
+    "verify:viewer": "node fixtures-gen/verify-viewer.mjs"
   },
   "dependencies": {
     "commander": "^14.0.3",
