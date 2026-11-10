@@ -30,6 +30,9 @@ describe('built-in patterns', () => {
     expect(scrub('{"user":"bob","password":"hunter2hunter2"}')).toBe('{"user":"bob","password":"[REDACTED:sensitive-key]"}');
     expect(scrub(`headers: { 'X-API-Key': 'abc-123-def' }`)).toBe(`headers: { 'X-API-Key': '[REDACTED:sensitive-key]' }`);
     expect(scrub('{"client_secret": "s3cr3t-value"}')).toContain('[REDACTED:sensitive-key]');
+    expect(scrub(`fetch(u, { headers: { 'Authorization': 'Bearer opaque-token-1' } })`)).toBe(
+      `fetch(u, { headers: { 'Authorization': 'Bearer [REDACTED:authorization]' } })`,
+    );
   });
 
   it('ignores metadata keys and trivial values', () => {

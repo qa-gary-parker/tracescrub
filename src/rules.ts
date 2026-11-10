@@ -170,6 +170,10 @@ export function builtinTextRules(): TextRule[] {
           if (!ctx.isSensitiveKey(m[2])) continue;
           const v = m[4];
           if (isRedacted(v) || isTrivialValue(v)) continue;
+          if (/^(?:proxy-)?authorization$/i.test(m[2])) {
+            for (const a of authorizationSpans(v)) out.push({ ...a, start: idx[0] + a.start, end: idx[0] + a.end });
+            continue;
+          }
           out.push({ start: idx[0], end: idx[1], rule: 'sensitive-key', harvest: true });
         }
         return out;
