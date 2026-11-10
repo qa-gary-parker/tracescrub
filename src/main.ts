@@ -1,5 +1,5 @@
 import { Command, CommanderError, Option } from 'commander';
-import { cp, mkdir, stat } from 'node:fs/promises';
+import { cp, mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildDetectorOptions } from './config.js';
 import { discover } from './discover.js';
@@ -25,6 +25,7 @@ interface CommonOpts {
   envFile?: string[];
   config?: string;
   json?: boolean;
+  jsonOut?: string;
   all?: boolean;
   propagate?: boolean;
 }
@@ -37,6 +38,7 @@ function addCommon(cmd: Command): Command {
     .option('--env-file <file>', 'dotenv file whose values are secrets (repeatable)', collect)
     .option('--config <file>', 'config file (default: ./tracescrub.config.json if present)')
     .option('--json', 'machine-readable output')
+    .option('--json-out <file>', 'also write the JSON report to a file')
     .option('--all', 'list every finding instead of the first 25 per file')
     .addOption(new Option('--no-propagate', 'do not redact harvested secrets (e.g. typed passwords) everywhere else'));
 }
@@ -96,6 +98,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
     const files = await discover(paths);
     const results = await scanFiles(files, options, { scrub: false, propagate: o.propagate });
     io.out(o.json ? formatJson(results, 'check') : formatHuman(results, { all: o.all, mode: 'check' }));
+    if (o.jsonOut) await writeFile(o.jsonOut, formatJson(results, 'check') + '\n');
     exitCode = results.some((r) => r.findings.length > 0) ? 1 : 0;
   });
 
@@ -114,6 +117,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
     const files = await discover(targets);
     const results = await scanFiles(files, options, { scrub: true, propagate: o.propagate });
     io.out(o.json ? formatJson(results, 'scrub') : formatHuman(results, { all: o.all, mode: 'scrub' }));
+    if (o.jsonOut) await writeFile(o.jsonOut, formatJson(results, 'scrub') + '\n');
     if (o.out && !o.json) io.out(`Output: ${path.resolve(o.out)}`);
     exitCode = 0;
   });

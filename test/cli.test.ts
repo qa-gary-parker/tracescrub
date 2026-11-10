@@ -88,6 +88,16 @@ describe('check', () => {
     expect((await run(['check', path.join(dir, 'state.json'), '--config', path.join(dir, 'cfg.json')])).code).toBe(0);
   });
 
+  it('writes a JSON report with --json-out', async () => {
+    const dir = tmp();
+    const file = path.join(dir, 'report.json');
+    const r = await run(['check', fx('login.har'), '--json-out', file]);
+    expect(r.code).toBe(1);
+    const out = JSON.parse(readFileSync(file, 'utf8')) as JsonOut;
+    expect(out.summary.findings).toBeGreaterThan(0);
+    for (const secret of PLANTED_VALUES) expect(readFileSync(file, 'utf8')).not.toContain(secret);
+  });
+
   it('exits 0 on clean input', async () => {
     const dir = tmp();
     writeFileSync(path.join(dir, 'clean.json'), JSON.stringify({ hello: 'world', theme: 'dark' }));
