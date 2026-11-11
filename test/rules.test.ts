@@ -125,6 +125,26 @@ describe('sensitive key names', () => {
   it.each(['passed', 'author', 'token_type', 'passwordHint', 'username', 'theme', 'consider', 'expires'])('%s is not sensitive', (k) =>
     expect(defaultIsSensitiveKey(k)).toBe(false),
   );
+
+  // camelCase keys: the word-end check runs on the key split at case changes, so a
+  // sensitive word followed by another camelCase word still counts.
+  it.each(['passwordConfirm', 'passwordHash', 'newPassword', 'confirmPasswordValue', 'pwdConfirm', 'APIKey', 'refreshTokenValue', 'tokenValue'])(
+    'camelCase key %s is sensitive',
+    (k) => expect(defaultIsSensitiveKey(k)).toBe(true),
+  );
+  // Deliberate non-matches: a sensitive word that runs on into a longer lowercase word
+  // is a different word. The trade-off is that an all-lowercase "passwordconfirm" is
+  // missed too; add it to sensitiveKeys in the config if an app uses such names.
+  it.each(['passwordless', 'isPasswordless', 'passport', 'tokenizer', 'tokenize', 'tokenization', 'passwordLength', 'passwordconfirm'])(
+    '%s is not sensitive',
+    (k) => expect(defaultIsSensitiveKey(k)).toBe(false),
+  );
+
+  it('redacts camelCase sensitive keys in embedded JSON and forms', () => {
+    expect(scrub('{"passwordConfirm":"hunter2hunter2"}')).toBe('{"passwordConfirm":"[REDACTED:sensitive-key]"}');
+    expect(scrub('passwordHash=abcdef123456&x=1')).toBe('passwordHash=[REDACTED:form-field]&x=1');
+    expect(rulesIn('{"tokenizer":"whitespace","passwordless":"enabled-flow"}')).toEqual([]);
+  });
 });
 
 describe('mask', () => {

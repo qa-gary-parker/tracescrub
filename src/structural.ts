@@ -9,6 +9,7 @@ import {
   isRedacted,
   isTrivialValue,
   PASSWORD_SELECTOR_RE,
+  splitCamelCase,
   type Span,
 } from './rules.js';
 
@@ -46,7 +47,7 @@ const ACTION_RE = /(?:^|[.\s])(fill|type|presssequentially)\b|^(fill|type)\b/i;
 const STEP_TITLE_RE = /^(?:Fill|Type|Press sequentially)\s+"([\s\S]*)"/;
 
 function mentionsPassword(...vals: unknown[]): boolean {
-  return vals.some((v) => typeof v === 'string' && PASSWORD_SELECTOR_RE.test(v));
+  return vals.some((v) => typeof v === 'string' && PASSWORD_SELECTOR_RE.test(splitCamelCase(v)));
 }
 
 /** Fields of a Playwright action whose values are typed into a password-like input. */

@@ -92,6 +92,13 @@ describe('Playwright-aware rules', () => {
     expect(email.changed).toBe(false);
   });
 
+  it('treats camelCase selectors such as #passwordConfirm as password inputs', () => {
+    const r = run({ type: 'before', method: 'fill', params: { selector: '#passwordConfirm', value: 'hunter2' } });
+    expect((r.value as { params: { value: string } }).params.value).toBe('[REDACTED:password-fill]');
+    const other = run({ type: 'before', method: 'fill', params: { selector: '#passwordlessEmail', value: 'bob@example.test' } });
+    expect(other.changed).toBe(false);
+  });
+
   it('redacts type / pressSequentially text on password inputs', () => {
     const r = run({ type: 'before', apiName: 'locator.pressSequentially', params: { selector: 'input[name=pwd]', text: 'hunter2' } });
     expect((r.value as { params: { text: string } }).params.text).toBe('[REDACTED:password-fill]');

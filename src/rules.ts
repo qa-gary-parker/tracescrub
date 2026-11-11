@@ -29,20 +29,34 @@ export function isRedacted(value: string): boolean {
   return value.includes(REDACTED_MARK);
 }
 
-/** Key names that look sensitive. Matched case-insensitively against the whole key. */
+/**
+ * Key names that look sensitive. Matched case-insensitively against the key
+ * after {@link splitCamelCase}, so the `(?![a-z])` word-end checks see
+ * `passwordConfirm` as `password_Confirm` (a match) while `passwordless`
+ * stays one word (no match).
+ */
 export const SENSITIVE_KEY_RE =
-  /pass(?:word|wd|phrase|code)?(?![a-z])|pwd|secret|token|api[-_]?key|apikey|auth(?!or(?:s|ed|ship)?(?![a-z]))|session|sessid|(?:^|[^a-z])sid(?:$|[^a-z])|credential|private[-_]?key|access[-_]?key|jwt|bearer|csrf|xsrf|(?:^|[^a-z])otp(?:$|[^a-z])/i;
+  /pass(?:word|wd|phrase|code)?(?![a-z])|pwd|secret|token(?!i[sz])|api[-_]?key|apikey|auth(?!or(?:s|ed|ship)?(?![a-z]))|session|sessid|(?:^|[^a-z])sid(?:$|[^a-z])|credential|private[-_]?key|access[-_]?key|jwt|bearer|csrf|xsrf|(?:^|[^a-z])otp(?:$|[^a-z])/i;
 
 /** Key names that contain a sensitive word but describe metadata rather than a secret. */
 export const NON_SECRET_KEY_RE =
   /(?:type|kind|expires?|expiry|expires_?in|expires_?at|length|count|size|url|uri|path|hint|label|placeholder|name|required|strength|policy|enabled)$/i;
 
+/**
+ * Insert `_` at camelCase word boundaries ("passwordConfirm" -> "password_Confirm",
+ * "APIKey" -> "API_Key") so case-insensitive word-end checks still see them.
+ */
+export function splitCamelCase(name: string): string {
+  return name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2');
+}
+
 export function defaultIsSensitiveKey(name: string, extra: ReadonlySet<string> = new Set()): boolean {
-  const n = name.trim().toLowerCase();
+  const trimmed = name.trim();
+  const n = trimmed.toLowerCase();
   if (!n) return false;
   if (extra.has(n)) return true;
   if (NON_SECRET_KEY_RE.test(n)) return false;
-  return SENSITIVE_KEY_RE.test(n);
+  return SENSITIVE_KEY_RE.test(splitCamelCase(trimmed));
 }
 
 /** Values that are never worth redacting even under a sensitive key. */
