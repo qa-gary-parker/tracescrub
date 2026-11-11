@@ -3,7 +3,7 @@
 Scrub secrets from Playwright traces, HTML reports, HAR files and `storageState` JSON **before** they
 become CI artifacts.
 
-> Status: MVP / prototype. On npm as [`playwright-tracescrub`](https://www.npmjs.com/package/playwright-tracescrub); the CLI command is `tracescrub`.
+> Status: MVP / prototype. Not published to npm yet.
 
 ## The problem
 
@@ -63,9 +63,11 @@ elsewhere; a warning says how many there were (never the values).
 ## Quick start
 
 ```sh
-npm i -D playwright-tracescrub
+# not on npm yet: install from a checkout
+git clone https://github.com/qa-gary-parker/tracescrub && cd tracescrub && npm ci && npm link
 
-npx tracescrub check ./test-results ./playwright-report
+tracescrub check ./test-results ./playwright-report
+# once published: npx tracescrub check ./test-results
 ```
 
 ```sh
