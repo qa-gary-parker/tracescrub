@@ -24,12 +24,25 @@ export interface ProcessContext {
   det: Detector;
   file: string;
   onHit(f: RawFinding): void;
-  /** Called for entries that were skipped (images etc.). */
-  onSkip?(entry: string, reason: string): void;
+  /**
+   * Called for content that was not scanned. `entry` is the archive entry chain,
+   * or '' when the whole file was skipped.
+   */
+  onSkip?(entry: string, reason: string, kind: SkipKind): void;
 }
 
-const BINARY_EXT =
-  /\.(png|jpe?g|gif|webp|avif|bmp|ico|tiff?|woff2?|ttf|otf|eot|mp4|webm|mov|avi|mp3|wav|ogg|wasm|pdf|gz|tgz|br|zst|7z|rar)$/i;
+/**
+ * Why something was not scanned:
+ * - `media`: images, fonts, audio and video. Text rules cannot apply to them; they
+ *   are reported as a note only.
+ * - `unscanned`: anything else we could not read (unreadable zip, non-UTF-8 text,
+ *   other binary formats). These may hide secrets, so they are warned about and
+ *   make `check` and `scrub` fail unless `--allow-unscanned` is given.
+ */
+export type SkipKind = 'media' | 'unscanned';
+
+const MEDIA_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|tiff?|woff2?|ttf|otf|eot|mp4|webm|mov|avi|mp3|wav|ogg)$/i;
+const BINARY_EXT = /\.(wasm|pdf|gz|tgz|br|zst|7z|rar)$/i;
 const NDJSON_EXT = /\.(trace|network|ndjson|jsonl)$/i;
 const JSON_EXT = /\.(json|har|stacks)$/i;
 const REPORT_MARKER = 'playwrightReportBase64';
@@ -67,13 +80,17 @@ export async function processContent(
   entry = '',
 ): Promise<Uint8Array | null> {
   if (isZip(name, buf)) return processZip(buf, ctx, entry);
+  if (MEDIA_EXT.test(name)) {
+    ctx.onSkip?.(entry, 'image or media (not scanned yet)', 'media');
+    return null;
+  }
   if (BINARY_EXT.test(name)) {
-    ctx.onSkip?.(entry || name, 'binary (images and media are not scanned yet)');
+    ctx.onSkip?.(entry, 'binary format that tracescrub cannot read', 'unscanned');
     return null;
   }
   const text = decodeText(buf);
   if (text === null) {
-    ctx.onSkip?.(entry || name, 'not text');
+    ctx.onSkip?.(entry, 'not UTF-8 text', 'unscanned');
     return null;
   }
   const out = processText(name, text, ctx, entry);
@@ -185,7 +202,7 @@ export async function processZip(buf: Uint8Array, ctx: ProcessContext, entry: st
   try {
     zip = await JSZip.loadAsync(buf);
   } catch (e) {
-    ctx.onSkip?.(entry || ctx.file, `unreadable zip: ${(e as Error).message}`);
+    ctx.onSkip?.(entry, `unreadable zip: ${(e as Error).message}`, 'unscanned');
     return null;
   }
   let changed = false;

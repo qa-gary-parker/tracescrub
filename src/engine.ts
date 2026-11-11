@@ -1,6 +1,6 @@
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { Detector, type DetectorOptions } from './detector.js';
-import { processContent, type RawFinding } from './formats.js';
+import { processContent, type RawFinding, type SkipKind } from './formats.js';
 import { mask } from './mask.js';
 
 export interface Finding {
@@ -19,7 +19,18 @@ export interface FileResult {
   findings: Finding[];
   /** Whether the file was rewritten (scrub mode only). */
   written: boolean;
-  skipped: { entry: string; reason: string }[];
+  /** Content that was not scanned. `entry` is '' when the whole file was skipped. */
+  skipped: { entry: string; reason: string; kind: SkipKind }[];
+}
+
+/** Skipped content that may hide secrets (not images or other media). */
+export function unscannedOf(r: FileResult): FileResult['skipped'] {
+  return r.skipped.filter((s) => s.kind === 'unscanned');
+}
+
+/** True when the file as a whole could not be scanned (not media). */
+export function wholeFileUnscanned(r: FileResult): boolean {
+  return r.skipped.some((s) => s.entry === '' && s.kind === 'unscanned');
 }
 
 export interface ScanOptions {
@@ -72,7 +83,7 @@ export async function scanFiles(files: string[], detOpts: DetectorOptions, opts:
       det,
       file,
       onHit: (h) => raw.push(h),
-      onSkip: (entry, reason) => skipped.push({ entry, reason }),
+      onSkip: (entry, reason, kind) => skipped.push({ entry, reason, kind }),
     });
     let written = false;
     if (opts.scrub && out) {

@@ -26,16 +26,23 @@ inputs:
     required: false
     default: ''
   fail-on-findings:
-    description: In check mode, fail the step when secrets are found. Ignored in scrub mode.
+    description: In check mode, fail the step when secrets are found or content could not be scanned. Ignored in scrub mode.
     required: false
     default: 'true'
+  allow-unscanned:
+    description: Do not fail when some content could not be scanned (unreadable zips, non-UTF-8 text). Images and other media never fail the run.
+    required: false
+    default: 'false'
 
 outputs:
   findings:
     description: Number of secrets found (check) or redacted (scrub).
     value: ${{ steps.run.outputs.findings }}
+  unscanned:
+    description: Number of files or archive entries that could not be scanned (images and media excluded).
+    value: ${{ steps.run.outputs.unscanned }}
   exit-code:
-    description: Raw exit code of the tracescrub CLI (0 clean, 1 findings, 2 usage error).
+    description: Raw exit code of the tracescrub CLI (0 clean, 1 findings or unscanned content in check mode, 2 usage error or unscanned content in scrub mode).
     value: ${{ steps.run.outputs.exit-code }}
 
 runs:
@@ -61,6 +68,7 @@ runs:
         TS_ENV_FILE: ${{ inputs.env-file }}
         TS_CONFIG: ${{ inputs.config }}
         TS_FAIL: ${{ inputs.fail-on-findings }}
+        TS_ALLOW_UNSCANNED: ${{ inputs.allow-unscanned }}
       run: |
         # The runner starts bash with -e; turn it off so exit codes can be inspected.
         set +e -uo pipefail
@@ -81,6 +89,7 @@ runs:
         if [ "$found" = 0 ]; then
           echo "tracescrub: none of the paths exist; nothing to do"
           echo "findings=0" >> "$GITHUB_OUTPUT"
+          echo "unscanned=0" >> "$GITHUB_OUTPUT"
           echo "exit-code=0" >> "$GITHUB_OUTPUT"
           exit 0
         fi
@@ -88,20 +97,30 @@ runs:
         [ -n "$TS_ENV_NAMES" ] && args+=(--env "$TS_ENV_NAMES")
         [ -n "$TS_ENV_FILE" ] && args+=(--env-file "$TS_ENV_FILE")
         [ -n "$TS_CONFIG" ] && args+=(--config "$TS_CONFIG")
+        [ "$TS_ALLOW_UNSCANNED" = true ] && args+=(--allow-unscanned)
         args+=(--json-out "$report")
 
         node "$TS_CLI" "${args[@]}"
         code=$?
 
         findings=0
+        unscanned=0
         if [ -f "$report" ]; then
-          findings=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).summary.findings)' "$report")
+          read -r findings unscanned < <(node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).summary; console.log(s.findings, s.unscanned)' "$report")
         fi
         echo "findings=$findings" >> "$GITHUB_OUTPUT"
+        echo "unscanned=$unscanned" >> "$GITHUB_OUTPUT"
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
 
+        if [ "$unscanned" -gt 0 ]; then
+          echo "::warning title=tracescrub::$unscanned file(s) or archive entries could not be scanned and may contain secrets (see the log)"
+        fi
         if [ "$code" -ge 2 ]; then
-          echo "::error title=tracescrub::tracescrub failed with exit code $code"
+          if [ "$TS_MODE" = scrub ] && [ "$unscanned" -gt 0 ]; then
+            echo "::error title=tracescrub::$unscanned item(s) could not be scanned, so they were not scrubbed. Set allow-unscanned: true to accept this."
+          else
+            echo "::error title=tracescrub::tracescrub failed with exit code $code"
+          fi
           exit "$code"
         fi
         if [ "$TS_MODE" = scrub ]; then
@@ -109,12 +128,19 @@ runs:
           exit 0
         fi
         if [ "$code" = 1 ]; then
-          echo "### tracescrub: found $findings potential secret(s)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$findings" -gt 0 ]; then
+            msg="found $findings potential secret(s) in test artifacts"
+            hint="Run with mode: scrub before uploading them."
+          else
+            msg="$unscanned item(s) in test artifacts could not be scanned"
+            hint="Set allow-unscanned: true to accept this."
+          fi
+          echo "### tracescrub: $msg" >> "$GITHUB_STEP_SUMMARY"
           if [ "$TS_FAIL" = true ]; then
-            echo "::error title=tracescrub::found $findings potential secret(s) in test artifacts. Run with mode: scrub before uploading them."
+            echo "::error title=tracescrub::$msg. $hint"
             exit 1
           fi
-          echo "::warning title=tracescrub::found $findings potential secret(s) in test artifacts"
+          echo "::warning title=tracescrub::$msg"
           exit 0
         fi
         echo "### tracescrub: no secrets found" >> "$GITHUB_STEP_SUMMARY"

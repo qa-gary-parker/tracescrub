@@ -120,6 +120,84 @@ describe('check', () => {
   });
 });
 
+describe('content that cannot be scanned', () => {
+  const latin1 = Buffer.from([0x70, 0x61, 0x73, 0x73, 0x3d, 0xe9, 0xe8, 0xff, 0x0a]); // not valid UTF-8
+  const brokenZip = Buffer.from('PK\u0003\u0004 this is not really a zip archive');
+
+  async function mixedZip(): Promise<Buffer> {
+    const zip = new JSZip();
+    zip.file('notes.txt', 'nothing secret here\n');
+    zip.file('legacy.log', latin1);
+    zip.file('shot.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
+    return Buffer.from(await zip.generateAsync({ type: 'uint8array' }));
+  }
+
+  it('check warns about an unreadable zip and fails', async () => {
+    const dir = tmp();
+    writeFileSync(path.join(dir, 'broken.zip'), brokenZip);
+    writeFileSync(path.join(dir, 'clean.json'), JSON.stringify({ hello: 'world' }));
+    const r = await run(['check', dir]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/warning: not scanned: .*broken\.zip \(unreadable zip/);
+    expect(r.stdout).not.toContain('No secrets found in 2 file(s).');
+    expect(r.stdout).toContain('No secrets found in the scanned content of 2 file(s).');
+    expect(r.stdout).toMatch(/1 item could not be scanned .*--allow-unscanned/);
+  });
+
+  it('check warns about non-UTF-8 text files and fails', async () => {
+    const dir = tmp();
+    writeFileSync(path.join(dir, 'legacy.log'), latin1);
+    const r = await run(['check', dir, '--json']);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/not scanned: .*legacy\.log \(not UTF-8 text\)/);
+    const out = JSON.parse(r.stdout);
+    expect(out.summary).toMatchObject({ findings: 0, unscanned: 1 });
+    expect(out.skipped).toEqual([expect.objectContaining({ entry: '', kind: 'unscanned' })]);
+  });
+
+  it('warns about unscanned zip entries but not about images', async () => {
+    const dir = tmp();
+    writeFileSync(path.join(dir, 'trace.zip'), await mixedZip());
+    const r = await run(['check', dir, '--json']);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/not scanned: .*trace\.zip!legacy\.log \(not UTF-8 text\)/);
+    expect(r.stderr).not.toContain('shot.png');
+    expect(JSON.parse(r.stdout).summary).toMatchObject({ unscanned: 1, media: 1 });
+  });
+
+  it('check passes with --allow-unscanned but still warns', async () => {
+    const dir = tmp();
+    writeFileSync(path.join(dir, 'broken.zip'), brokenZip);
+    const r = await run(['check', dir, '--allow-unscanned']);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain('not scanned');
+    expect(r.stdout).toContain('accepted because of --allow-unscanned');
+  });
+
+  it('check still exits 1 for findings when --allow-unscanned is set', async () => {
+    const r = await run(['check', fx('storageState.json'), '--allow-unscanned']);
+    expect(r.code).toBe(1);
+  });
+
+  it('scrub exits 2 when an input cannot be processed', async () => {
+    const dir = tmp();
+    writeFileSync(path.join(dir, 'broken.zip'), brokenZip);
+    cpSync(fx('storageState.json'), path.join(dir, 'state.json'));
+    const r = await run(['scrub', dir, '--in-place']);
+    expect(r.code).toBe(2);
+    expect(r.stderr).toMatch(/not scanned: .*broken\.zip/);
+    // what could be scrubbed still is
+    expect(readFileSync(path.join(dir, 'state.json'), 'utf8')).not.toContain(PLANTED.sessionCookie);
+    expect((await run(['scrub', dir, '--in-place', '--allow-unscanned'])).code).toBe(0);
+  });
+
+  it('does not warn about images and media inside the fixtures', async () => {
+    const r = await run(['check', FIXTURES]);
+    expect(r.stderr).not.toContain('not scanned');
+    expect(r.stdout).toMatch(/Note: \d+ image\/media entries were not scanned/);
+  });
+});
+
 describe('scrub', () => {
   let outDir: string;
   beforeAll(async () => {

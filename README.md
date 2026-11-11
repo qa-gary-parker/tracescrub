@@ -66,7 +66,7 @@ tracescrub check ./test-results ./playwright-report
 ```
 
 ```sh
-# report, exit 1 if anything is found (0 if clean, 2 on usage errors)
+# report, exit 1 if anything is found or some content could not be scanned (0 if clean, 2 on usage errors)
 tracescrub check ./test-results --env TEST_PASSWORD,API_TOKEN
 
 # write scrubbed copies to ./scrubbed (originals untouched)
@@ -87,6 +87,13 @@ Options shared by both commands:
 | `--json-out <file>` | Also write the JSON report to a file. |
 | `--all` | List every finding (the human output shows the first 25 per file). |
 | `--no-propagate` | Do not redact harvested secrets in other places. |
+| `--allow-unscanned` | Do not fail when some content could not be scanned (see below). |
+
+Content that cannot be scanned (an unreadable zip, a text file that is not UTF-8, a PDF or compressed
+blob inside a trace) is listed on stderr as `warning: not scanned: ...`. `check` then exits 1 and
+`scrub` exits 2, even if no secrets were found, because that content may still hold secrets. Pass
+`--allow-unscanned` to accept it. Images, fonts, audio and video are not scanned either, but they only
+produce a note and never fail the run.
 
 ### Example output
 
@@ -111,7 +118,7 @@ test/fixtures/storageState.json
   $.origins[0].localStorage[0].value  local-storage  tsk_****** (26 chars)
 
 Found 33 potential secret(s) in 2 of 2 file(s). (cookie: 14, sensitive-key: 8, password-fill: 4, jwt: 3, password-input: 2, authorization: 1, local-storage: 1)
-Note: 7 image/binary entries were not scanned (screenshots and screencast frames are not redacted yet).
+Note: 7 image/media entries were not scanned (screenshots and screencast frames are not redacted yet).
 ```
 
 Each finding shows the file, the zip entry, the line and JSON path, the rule and a masked preview.
@@ -158,9 +165,10 @@ its own if you would rather fix the tests than upload redacted artifacts).
 | `env-names` | `''` | Comma-separated env var names whose values are secrets. Set them in the step `env`. |
 | `env-file` | `''` | Optional dotenv file. |
 | `config` | `''` | Optional config file path. |
-| `fail-on-findings` | `true` | In `check` mode, fail the step when secrets are found. |
+| `fail-on-findings` | `true` | In `check` mode, fail the step when secrets are found or content could not be scanned. |
+| `allow-unscanned` | `false` | Do not fail when some content could not be scanned. |
 
-Outputs: `findings` (count) and `exit-code`. The action is a composite action; it builds the CLI with
+Outputs: `findings` (count), `unscanned` (count) and `exit-code`. The action is a composite action; it builds the CLI with
 the runner's `node` (20 or newer) on first use.
 
 ## Config
@@ -198,7 +206,9 @@ the runner's `node` (20 or newer) on first use.
   written back under the same name, so the name no longer matches the content. The trace viewer does not
   check this, but other tools might.
 - **Binary and encoded bodies.** Base64-encoded HAR bodies, compressed bodies, videos and other binary
-  entries are not decoded or scanned.
+  entries are not decoded or scanned. Images, fonts, audio and video only produce a note. Anything else
+  that cannot be read (unreadable zips, non-UTF-8 text, PDFs, compressed blobs) is listed as a warning
+  and fails `check` (exit 1) and `scrub` (exit 2) unless `--allow-unscanned` is passed.
 - **Patterns have false positives and false negatives.** Key-name rules will redact harmless values such
   as a `session` cookie that holds a theme, and will miss secrets stored under neutral names. Use
   `--env` / `--env-file` for the values you know about (the most reliable rule), the allowlist for noise,
