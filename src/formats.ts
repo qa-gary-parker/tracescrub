@@ -186,15 +186,25 @@ function processNdjson(text: string, ctx: ProcessContext, entry: string): string
   return changed ? lines.join('\n') : null;
 }
 
+/** Scan every embedded zip in the HTML report; the first is "<embedded report>", later ones "<embedded report #2>"... */
 async function processReportHtml(text: string, ctx: ProcessContext, entry: string): Promise<string | null> {
-  const m = REPORT_DATA_RE.exec(text);
-  if (!m) return null;
-  const inner = Buffer.from(m[2], 'base64');
-  const chain = `${entry ? entry + '!' : ''}<embedded report>`;
-  const out = await processZip(inner, ctx, chain);
-  if (!out) return null;
-  const b64 = Buffer.from(out).toString('base64');
-  return text.slice(0, m.index) + m[1] + b64 + text.slice(m.index + m[0].length);
+  const re = new RegExp(REPORT_DATA_RE.source, 'g');
+  let result = '';
+  let pos = 0;
+  let n = 0;
+  let changed = false;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    n++;
+    const inner = Buffer.from(m[2], 'base64');
+    const chain = `${entry ? entry + '!' : ''}<embedded report${n > 1 ? ` #${n}` : ''}>`;
+    const out = await processZip(inner, ctx, chain);
+    if (!out) continue;
+    result += text.slice(pos, m.index) + m[1] + Buffer.from(out).toString('base64');
+    pos = m.index + m[0].length;
+    changed = true;
+  }
+  return changed ? result + text.slice(pos) : null;
 }
 
 export async function processZip(buf: Uint8Array, ctx: ProcessContext, entry: string): Promise<Uint8Array | null> {

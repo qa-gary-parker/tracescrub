@@ -42,6 +42,33 @@ describe('check', () => {
     expect(out.findings.some((f) => f.entry.startsWith('<embedded report>!') && f.rule === 'password-fill')).toBe(true);
   });
 
+  it('scans and scrubs every embedded zip in a report HTML, not just the first', async () => {
+    const dir = tmp();
+    const embedded = async (file: string, body: string) => {
+      const zip = new JSZip();
+      zip.file(file, body);
+      return Buffer.from(await zip.generateAsync({ type: 'uint8array' })).toString('base64');
+    };
+    const first = await embedded('report.json', JSON.stringify({ password: PLANTED.password }));
+    const second = await embedded('extra.json', JSON.stringify({ apiKey: PLANTED.apiKey }));
+    const html = [
+      '<html><script>window.playwrightReportBase64 = "data:application/zip;base64,' + first + '";</script>',
+      '<script>window.more = "data:application/zip;base64,' + second + '";</script></html>',
+    ].join('\n');
+    const file = path.join(dir, 'index.html');
+    writeFileSync(file, html);
+    const out = JSON.parse((await run(['check', file, '--json'])).stdout) as JsonOut;
+    expect(out.findings.map((f) => f.entry).sort()).toEqual(['<embedded report #2>!extra.json', '<embedded report>!report.json']);
+    expect((await run(['scrub', file, '--in-place'])).code).toBe(0);
+    const joined = (await allText('index.html', readFileSync(file))).join('\n');
+    const zips = [...readFileSync(file, 'utf8').matchAll(/base64,([A-Za-z0-9+/=]+)/g)];
+    expect(zips).toHaveLength(2);
+    const second2 = await JSZip.loadAsync(Buffer.from(zips[1][1], 'base64'));
+    expect(await second2.file('extra.json')!.async('string')).toBe('{"apiKey":"[REDACTED:sensitive-key]"}');
+    expect(joined).not.toContain(PLANTED.password);
+    expect((await run(['check', file])).code).toBe(0);
+  });
+
   it('never prints a planted secret in human or JSON output', async () => {
     for (const args of [['check', FIXTURES, '--all'], ['check', FIXTURES, '--json']]) {
       const r = await run(args);
