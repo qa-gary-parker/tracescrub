@@ -39,10 +39,13 @@ Directories are walked recursively (`node_modules` and `.git` are skipped).
 ### Detection
 
 1. **Known values.** Values of the environment variables you name (`--env TEST_PASSWORD,API_TOKEN`) and
-   every value in a dotenv file (`--env-file .env.test`). Values shorter than 6 characters are ignored.
+   every value in a dotenv file (`--env-file .env.test`). Values shorter than 6 characters
+   (`minKnownLength`) are ignored, with a warning.
 2. **Built-in patterns.** JWTs; `Authorization: Bearer|Basic` credentials; `Cookie` / `Set-Cookie`
    values; JSON keys, JS object keys, form fields and query parameters named like `password`, `passwd`,
-   `secret`, `token`, `api_key`, `auth`, `session`, `csrf`...; AWS access key ids (`AKIA...`), GitHub
+   `secret`, `token`, `api_key`, `auth`, `session`, `csrf`... (camelCase names such as `passwordConfirm`
+   or `refreshToken` count; words that merely start the same way, such as `passwordless` or `tokenizer`,
+   do not); AWS access key ids (`AKIA...`), GitHub
    tokens (`ghp_`, `gho_`, `github_pat_`...), Slack tokens (`xox*`), Stripe keys (`sk_live_`/`sk_test_`),
    OpenAI-style and Anthropic-style `sk-...` keys, and PEM private key blocks.
 3. **Playwright-aware.** `fill` / `type` / `pressSequentially` parameters on a selector or locator that
@@ -54,6 +57,8 @@ Directories are walked recursively (`node_modules` and `.git` are skipped).
 **Propagation.** Secrets found by structure (a typed password, an `Authorization` header, a
 `password` field) are remembered and then redacted everywhere else they appear: log lines like
 `fill("...")`, request bodies, page HTML, other files in the same run. Turn this off with `--no-propagate`.
+Harvested values shorter than `minKnownLength` are redacted where they were found but not searched for
+elsewhere; a warning says how many there were (never the values).
 
 ## Quick start
 
@@ -218,7 +223,8 @@ runs restore it instead of building.
   that cannot be read (unreadable zips, non-UTF-8 text, PDFs, compressed blobs) is listed as a warning
   and fails `check` (exit 1) and `scrub` (exit 2) unless `--allow-unscanned` is passed.
 - **Patterns have false positives and false negatives.** Key-name rules will redact harmless values such
-  as a `session` cookie that holds a theme, and will miss secrets stored under neutral names. Use
+  as a `session` cookie that holds a theme, and will miss secrets stored under neutral names or
+  all-lowercase compounds such as `passwordconfirm`. Use
   `--env` / `--env-file` for the values you know about (the most reliable rule), the allowlist for noise,
   and `sensitiveKeys` / `patterns` for your own formats. Cookie values in request headers are always
   redacted.
