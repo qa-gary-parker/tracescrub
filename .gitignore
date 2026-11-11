@@ -2,10 +2,10 @@ node_modules/
 dist/
 test-results/
 playwright-report/
+fixtures-gen/.out/
 .env
 .env.*
 !.env.example
 *.log
 .DS_Store
 coverage/
-/tmp/

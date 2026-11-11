@@ -1,0 +1,184 @@
+name: tracescrub
+description: Find or redact secrets in Playwright traces, HTML reports, HAR files and storageState before uploading them as artifacts.
+author: Gary Parker
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  paths:
+    description: Files or directories to scan, separated by spaces or newlines (for example "test-results playwright-report"). Missing paths are skipped.
+    required: true
+  mode:
+    description: "check (report and fail on findings) or scrub (redact in place)."
+    required: false
+    default: check
+  env-names:
+    description: Comma-separated names of environment variables whose values are secrets (for example "TEST_PASSWORD,API_TOKEN"). The variables must be set in the job or step env.
+    required: false
+    default: ''
+  env-file:
+    description: Optional dotenv file whose values are secrets.
+    required: false
+    default: ''
+  config:
+    description: Optional path to a tracescrub.config.json file.
+    required: false
+    default: ''
+  fail-on-findings:
+    description: In check mode, fail the step when secrets are found or content could not be scanned. Ignored in scrub mode.
+    required: false
+    default: 'true'
+  allow-unscanned:
+    description: Do not fail when some content could not be scanned (unreadable zips, non-UTF-8 text). Images and other media never fail the run.
+    required: false
+    default: 'false'
+
+outputs:
+  findings:
+    description: Number of secrets found (check) or redacted (scrub).
+    value: ${{ steps.run.outputs.findings }}
+  unscanned:
+    description: Number of files or archive entries that could not be scanned (images and media excluded).
+    value: ${{ steps.run.outputs.unscanned }}
+  exit-code:
+    description: Raw exit code of the tracescrub CLI (0 clean, 1 findings or unscanned content in check mode, 2 usage error or unscanned content in scrub mode).
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    # dist/ is not committed, so the CLI is built from source. The build output and the
+    # runtime dependencies are cached, keyed on the sources and the lockfile, so later runs
+    # only restore them.
+    - name: Compute tracescrub build key
+      id: key
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [ -f dist/cli.js ]; then echo "built=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+        hash=$(node -e '
+          const fs = require("fs"), path = require("path"), h = require("crypto").createHash("sha256");
+          const files = ["package-lock.json", "tsconfig.json", "tsconfig.build.json"];
+          const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+            const p = path.join(d, e.name);
+            e.isDirectory() ? walk(p) : files.push(p);
+          });
+          walk("src");
+          for (const f of files.sort()) h.update(f + "\0").update(fs.readFileSync(f));
+          console.log(h.digest("hex").slice(0, 20));
+        ')
+        echo "key=tracescrub-build-${RUNNER_OS}-node$(node -p 'process.versions.node.split(".")[0]')-${hash}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore tracescrub build
+      id: cache
+      if: steps.key.outputs.built != 'true'
+      uses: actions/cache@v6
+      with:
+        path: |
+          ${{ github.action_path }}/dist
+          ${{ github.action_path }}/node_modules
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build tracescrub
+      if: steps.key.outputs.built != 'true' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        npm ci --ignore-scripts --no-audit --no-fund --loglevel=error
+        npm run build --silent
+        # keep only the runtime dependencies in the cache
+        npm prune --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
+
+    - name: Run tracescrub
+      id: run
+      shell: bash
+      env:
+        TS_CLI: ${{ github.action_path }}/dist/cli.js
+        TS_PATHS: ${{ inputs.paths }}
+        TS_MODE: ${{ inputs.mode }}
+        TS_ENV_NAMES: ${{ inputs.env-names }}
+        TS_ENV_FILE: ${{ inputs.env-file }}
+        TS_CONFIG: ${{ inputs.config }}
+        TS_FAIL: ${{ inputs.fail-on-findings }}
+        TS_ALLOW_UNSCANNED: ${{ inputs.allow-unscanned }}
+      run: |
+        # The runner starts bash with -e; turn it off so exit codes can be inspected.
+        set +e -uo pipefail
+        report="${RUNNER_TEMP:-/tmp}/tracescrub-report.json"
+
+        args=()
+        case "$TS_MODE" in
+          check) args+=(check) ;;
+          scrub) args+=(scrub --in-place) ;;
+          *) echo "::error title=tracescrub::mode must be 'check' or 'scrub', got '$TS_MODE'"; exit 2 ;;
+        esac
+
+        found=0
+        paths=()
+        read -r -d '' -a candidates <<< "$TS_PATHS" || true
+        for p in "${candidates[@]}"; do
+          if [ -e "$p" ]; then paths+=("$p"); found=1; else echo "tracescrub: skipping missing path $p"; fi
+        done
+        if [ "$found" = 0 ]; then
+          echo "tracescrub: none of the paths exist; nothing to do"
+          echo "findings=0" >> "$GITHUB_OUTPUT"
+          echo "unscanned=0" >> "$GITHUB_OUTPUT"
+          echo "exit-code=0" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        [ -n "$TS_ENV_NAMES" ] && args+=(--env "$TS_ENV_NAMES")
+        [ -n "$TS_ENV_FILE" ] && args+=(--env-file "$TS_ENV_FILE")
+        [ -n "$TS_CONFIG" ] && args+=(--config "$TS_CONFIG")
+        [ "$TS_ALLOW_UNSCANNED" = true ] && args+=(--allow-unscanned)
+        args+=(--json-out "$report")
+        # paths go after "--" so one that starts with "-" is not read as an option
+        args+=(-- "${paths[@]}")
+
+        node "$TS_CLI" "${args[@]}"
+        code=$?
+
+        findings=0
+        unscanned=0
+        if [ -f "$report" ]; then
+          read -r findings unscanned < <(node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).summary; console.log(s.findings, s.unscanned)' "$report")
+        fi
+        echo "findings=$findings" >> "$GITHUB_OUTPUT"
+        echo "unscanned=$unscanned" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+
+        if [ "$unscanned" -gt 0 ]; then
+          echo "::warning title=tracescrub::$unscanned file(s) or archive entries could not be scanned and may contain secrets (see the log)"
+        fi
+        if [ "$code" -ge 2 ]; then
+          if [ "$TS_MODE" = scrub ] && [ "$unscanned" -gt 0 ]; then
+            echo "::error title=tracescrub::$unscanned item(s) could not be scanned, so they were not scrubbed. Set allow-unscanned: true to accept this."
+          else
+            echo "::error title=tracescrub::tracescrub failed with exit code $code"
+          fi
+          exit "$code"
+        fi
+        if [ "$TS_MODE" = scrub ]; then
+          echo "### tracescrub: redacted $findings secret(s)" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+        if [ "$code" = 1 ]; then
+          if [ "$findings" -gt 0 ]; then
+            msg="found $findings potential secret(s) in test artifacts"
+            hint="Run with mode: scrub before uploading them."
+          else
+            msg="$unscanned item(s) in test artifacts could not be scanned"
+            hint="Set allow-unscanned: true to accept this."
+          fi
+          echo "### tracescrub: $msg" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$TS_FAIL" = true ]; then
+            echo "::error title=tracescrub::$msg. $hint"
+            exit 1
+          fi
+          echo "::warning title=tracescrub::$msg"
+          exit 0
+        fi
+        echo "### tracescrub: no secrets found" >> "$GITHUB_STEP_SUMMARY"

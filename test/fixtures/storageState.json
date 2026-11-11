@@ -1,0 +1,39 @@
+{
+  "cookies": [
+    {
+      "name": "session",
+      "value": "tsk_FAKE_session_c0ffee1234",
+      "domain": "app.tracescrub.test",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "locale",
+      "value": "en-GB",
+      "domain": "app.tracescrub.test",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": false,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "https://app.tracescrub.test",
+      "localStorage": [
+        {
+          "name": "auth_token",
+          "value": "tsk_FAKE_localtoken_7e1d9a"
+        },
+        {
+          "name": "theme",
+          "value": "dark"
+        }
+      ]
+    }
+  ]
+}

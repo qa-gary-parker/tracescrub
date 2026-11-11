@@ -1,0 +1,62 @@
+{
+  "name": "tracescrub",
+  "version": "0.1.0",
+  "description": "Scrub secrets from Playwright traces, HAR files, reports and storageState before they become CI artifacts",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "author": "Gary Parker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qa-gary-parker/tracescrub.git"
+  },
+  "keywords": [
+    "playwright",
+    "trace",
+    "har",
+    "secrets",
+    "redact",
+    "ci",
+    "security"
+  ],
+  "bin": {
+    "tracescrub": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "action.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "npm run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fixtures:gen": "node fixtures-gen/generate.mjs",
+    "verify:viewer": "node fixtures-gen/verify-viewer.mjs"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "jszip": "^3.10.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^20.19.43",
+    "typescript": "~5.9",
+    "vitest": "^4.1.12"
+  }
+}
