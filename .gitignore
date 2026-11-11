@@ -9,3 +9,4 @@ fixtures-gen/.out/
 *.log
 .DS_Store
 coverage/
+demo/out/

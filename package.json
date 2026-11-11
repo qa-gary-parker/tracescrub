@@ -48,7 +48,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "fixtures:gen": "node fixtures-gen/generate.mjs",
-    "verify:viewer": "node fixtures-gen/verify-viewer.mjs"
+    "verify:viewer": "node fixtures-gen/verify-viewer.mjs",
+    "demo:video": "docker run --rm --ipc=host -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.65.0-noble sh -c \"npm run build && npx playwright test --config=demo/playwright.config.ts\" && for o in landscape portrait; do ffmpeg -loglevel error -y $(cat demo/out/cut-$o.txt) -i demo/out/tracescrub-$o.webm -c:v libx264 -crf 18 -pix_fmt yuv420p -movflags +faststart -an demo/out/tracescrub-$o.mp4; done"
   },
   "dependencies": {
     "commander": "^14.0.3",
