@@ -1,5 +1,5 @@
 {
-  "name": "playwright-tracescrub",
+  "name": "tracescrub",
   "version": "0.1.0",
   "description": "Scrub secrets from Playwright traces, HAR files, reports and storageState before they become CI artifacts",
   "type": "module",
