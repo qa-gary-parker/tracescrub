@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { chmod, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { Detector, type DetectorOptions } from './detector.js';
 import { processContent, type RawFinding, type SkipKind } from './formats.js';
 import { mask } from './mask.js';
@@ -50,6 +50,25 @@ const toFinding = (f: RawFinding): Finding => ({
 });
 
 /**
+ * Atomically replace `file` with `data`, keeping its permission bits. The
+ * temporary file is removed if anything fails before the rename.
+ */
+export async function replaceFile(file: string, data: Uint8Array): Promise<void> {
+  const { mode } = await stat(file);
+  const tmp = `${file}.tracescrub-tmp`;
+  let renamed = false;
+  try {
+    await writeFile(tmp, data, { mode: mode & 0o7777 });
+    await chmod(tmp, mode & 0o7777); // writeFile's mode is filtered by the umask
+    await rename(tmp, file);
+    renamed = true;
+  } finally {
+    // best effort: never let the cleanup hide the original error
+    if (!renamed) await rm(tmp, { force: true }).catch(() => {});
+  }
+}
+
+/**
  * Scan (and optionally scrub in place) a list of files.
  *
  * Pass 1 harvests secrets that were found by structure (for example the
@@ -89,9 +108,7 @@ export async function scanFiles(files: string[], detOpts: DetectorOptions, opts:
     });
     let written = false;
     if (opts.scrub && out) {
-      const tmp = `${file}.tracescrub-tmp`;
-      await writeFile(tmp, out);
-      await rename(tmp, file);
+      await replaceFile(file, out);
       written = true;
     }
     results.push({ file, findings: raw.map(toFinding), written, skipped });
