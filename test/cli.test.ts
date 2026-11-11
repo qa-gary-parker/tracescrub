@@ -150,6 +150,17 @@ describe('check', () => {
     expect(r.stdout).toContain('No secrets found');
   });
 
+  it('reads paths after -- as paths, even when they start with a dash', async () => {
+    const r = await run(['check', '--json', '--', fx('storageState.json')]);
+    expect(r.code).toBe(1);
+    expect(JSON.parse(r.stdout).summary.findings).toBeGreaterThan(0);
+    // without "--" this would be an unknown option; with it, it is a (missing) path
+    const dash = await run(['check', '--', '-not-an-option']);
+    expect(dash.code).toBe(2);
+    expect(dash.stderr).toContain('path not found: -not-an-option');
+    expect((await run(['check', '-not-an-option'])).stderr).toContain('unknown option');
+  });
+
   it.each([
     [['check']],
     [['check', '/definitely/not/here']],

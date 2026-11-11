@@ -173,8 +173,11 @@ its own if you would rather fix the tests than upload redacted artifacts).
 | `fail-on-findings` | `true` | In `check` mode, fail the step when secrets are found or content could not be scanned. |
 | `allow-unscanned` | `false` | Do not fail when some content could not be scanned. |
 
-Outputs: `findings` (count), `unscanned` (count) and `exit-code`. The action is a composite action; it builds the CLI with
-the runner's `node` (20 or newer) on first use.
+Outputs: `findings` (count), `unscanned` (count) and `exit-code`. The action is a composite action.
+`dist/` is not committed, so it builds the CLI from source with the runner's `node` (20 or newer):
+`npm ci --ignore-scripts`, `tsc`, then prunes dev dependencies. The result is stored with
+`actions/cache`, keyed on the runner OS, the Node major version, the lockfile and the sources, so later
+runs restore it instead of building.
 
 ## Config
 

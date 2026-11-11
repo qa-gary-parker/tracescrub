@@ -48,14 +48,49 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Build tracescrub
+    # dist/ is not committed, so the CLI is built from source. The build output and the
+    # runtime dependencies are cached, keyed on the sources and the lockfile, so later runs
+    # only restore them.
+    - name: Compute tracescrub build key
+      id: key
       shell: bash
       working-directory: ${{ github.action_path }}
       run: |
-        if [ ! -f dist/cli.js ]; then
-          npm ci --ignore-scripts --no-audit --no-fund --loglevel=error
-          npm run build --silent
-        fi
+        set -euo pipefail
+        if [ -f dist/cli.js ]; then echo "built=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+        hash=$(node -e '
+          const fs = require("fs"), path = require("path"), h = require("crypto").createHash("sha256");
+          const files = ["package-lock.json", "tsconfig.json", "tsconfig.build.json"];
+          const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+            const p = path.join(d, e.name);
+            e.isDirectory() ? walk(p) : files.push(p);
+          });
+          walk("src");
+          for (const f of files.sort()) h.update(f + "\0").update(fs.readFileSync(f));
+          console.log(h.digest("hex").slice(0, 20));
+        ')
+        echo "key=tracescrub-build-${RUNNER_OS}-node$(node -p 'process.versions.node.split(".")[0]')-${hash}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore tracescrub build
+      id: cache
+      if: steps.key.outputs.built != 'true'
+      uses: actions/cache@v6
+      with:
+        path: |
+          ${{ github.action_path }}/dist
+          ${{ github.action_path }}/node_modules
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build tracescrub
+      if: steps.key.outputs.built != 'true' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        npm ci --ignore-scripts --no-audit --no-fund --loglevel=error
+        npm run build --silent
+        # keep only the runtime dependencies in the cache
+        npm prune --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
 
     - name: Run tracescrub
       id: run
@@ -82,9 +117,10 @@ runs:
         esac
 
         found=0
+        paths=()
         read -r -d '' -a candidates <<< "$TS_PATHS" || true
         for p in "${candidates[@]}"; do
-          if [ -e "$p" ]; then args+=("$p"); found=1; else echo "tracescrub: skipping missing path $p"; fi
+          if [ -e "$p" ]; then paths+=("$p"); found=1; else echo "tracescrub: skipping missing path $p"; fi
         done
         if [ "$found" = 0 ]; then
           echo "tracescrub: none of the paths exist; nothing to do"
@@ -99,6 +135,8 @@ runs:
         [ -n "$TS_CONFIG" ] && args+=(--config "$TS_CONFIG")
         [ "$TS_ALLOW_UNSCANNED" = true ] && args+=(--allow-unscanned)
         args+=(--json-out "$report")
+        # paths go after "--" so one that starts with "-" is not read as an option
+        args+=(-- "${paths[@]}")
 
         node "$TS_CLI" "${args[@]}"
         code=$?
