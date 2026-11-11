@@ -11,6 +11,8 @@ export interface Summary {
   unscanned: number;
   /** Images, fonts, audio and video that were not scanned. */
   media: number;
+  /** `scrub --out`: files left out of the output because they could not be scanned. */
+  filesNotCopied: number;
 }
 
 export function summarize(results: FileResult[]): Summary {
@@ -30,6 +32,7 @@ export function summarize(results: FileResult[]): Summary {
     filesWritten: results.filter((r) => r.written).length,
     unscanned: results.reduce((n, r) => n + unscannedOf(r).length, 0),
     media: results.reduce((n, r) => n + r.skipped.filter((x) => x.kind === 'media').length, 0),
+    filesNotCopied: results.filter((r) => r.notCopied).length,
   };
 }
 
@@ -86,6 +89,9 @@ export function formatHuman(
         : 'exit code 2; pass --allow-unscanned to accept this';
     lines.push(`Warning: ${items(s.unscanned)} could not be scanned and may contain secrets (listed on stderr; ${consequence}).`);
   }
+  if (s.filesNotCopied > 0) {
+    lines.push(`Not copied to the output: ${s.filesNotCopied} file(s) that could not be scanned (listed on stderr).`);
+  }
   if (s.media > 0) {
     lines.push(`Note: ${s.media} image/media entr${s.media === 1 ? 'y was' : 'ies were'} not scanned (screenshots and screencast frames are not redacted yet).`);
   }
@@ -100,6 +106,7 @@ export function formatJson(results: FileResult[], mode: 'check' | 'scrub'): stri
       summary: summarize(results),
       findings: results.flatMap((r) => r.findings),
       skipped: results.flatMap((r) => r.skipped.map((s) => ({ file: r.file, ...s }))),
+      notCopied: results.filter((r) => r.notCopied).map((r) => r.file),
     },
     null,
     2,

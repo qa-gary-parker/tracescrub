@@ -21,6 +21,8 @@ export interface FileResult {
   written: boolean;
   /** Content that was not scanned. `entry` is '' when the whole file was skipped. */
   skipped: { entry: string; reason: string; kind: SkipKind }[];
+  /** `scrub --out` only: the file could not be scanned, so it was left out of the output directory. */
+  notCopied?: boolean;
 }
 
 /** Skipped content that may hide secrets (not images or other media). */

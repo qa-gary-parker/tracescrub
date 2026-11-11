@@ -95,6 +95,11 @@ blob inside a trace) is listed on stderr as `warning: not scanned: ...`. `check`
 `--allow-unscanned` to accept it. Images, fonts, audio and video are not scanned either, but they only
 produce a note and never fail the run.
 
+With `scrub --out`, a file that could not be scanned at all is left out of the output directory (with a
+warning) rather than copied unredacted. A zip that was only partly scanned is still copied, and each
+entry that was not scanned is listed. Files of types that `tracescrub` does not look at when walking a
+directory (screenshots, videos, the report's trace viewer assets) are copied unchanged.
+
 ### Example output
 
 Run against the committed fixtures (real Playwright output from a fake login page, with fake planted secrets):

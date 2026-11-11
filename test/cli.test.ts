@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -189,6 +189,40 @@ describe('content that cannot be scanned', () => {
     // what could be scrubbed still is
     expect(readFileSync(path.join(dir, 'state.json'), 'utf8')).not.toContain(PLANTED.sessionCookie);
     expect((await run(['scrub', dir, '--in-place', '--allow-unscanned'])).code).toBe(0);
+  });
+
+  it('scrub --out leaves files it could not scan out of the output', async () => {
+    const src = tmp();
+    const out = tmp('tracescrub-out-');
+    writeFileSync(path.join(src, 'broken.zip'), brokenZip);
+    writeFileSync(path.join(src, 'legacy.log'), latin1);
+    writeFileSync(path.join(src, 'trace.zip'), await mixedZip());
+    cpSync(fx('storageState.json'), path.join(src, 'state.json'));
+    const name = path.basename(src);
+    const r = await run(['scrub', src, '--out', out, '--json']);
+    expect(r.code).toBe(2);
+    expect(existsSync(path.join(out, name, 'broken.zip'))).toBe(false);
+    expect(existsSync(path.join(out, name, 'legacy.log'))).toBe(false);
+    expect(r.stderr).toMatch(/not copied to --out \(could not be scanned\): .*broken\.zip/);
+    expect(r.stderr).toMatch(/not copied to --out \(could not be scanned\): .*legacy\.log/);
+    // scanned files are still written, scrubbed
+    expect(readFileSync(path.join(out, name, 'state.json'), 'utf8')).not.toContain(PLANTED.sessionCookie);
+    // a zip that was only partly scanned is kept; its unscanned entry is listed instead
+    expect(existsSync(path.join(out, name, 'trace.zip'))).toBe(true);
+    expect(r.stderr).toMatch(/not scanned: .*trace\.zip!legacy\.log/);
+    const json = JSON.parse(r.stdout);
+    expect(json.summary.filesNotCopied).toBe(2);
+    expect(json.notCopied).toHaveLength(2);
+    // the originals are untouched
+    expect(existsSync(path.join(src, 'broken.zip'))).toBe(true);
+  });
+
+  it('scrub --out reports left-out files in the human summary', async () => {
+    const src = tmp();
+    writeFileSync(path.join(src, 'broken.zip'), brokenZip);
+    const r = await run(['scrub', src, '--out', tmp('tracescrub-out-'), '--allow-unscanned']);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('Not copied to the output: 1 file(s) that could not be scanned');
   });
 
   it('does not warn about images and media inside the fixtures', async () => {

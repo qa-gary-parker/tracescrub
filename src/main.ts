@@ -1,11 +1,11 @@
 import { Command, CommanderError, Option } from 'commander';
-import { cp, mkdir, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { buildDetectorOptions } from './config.js';
 import { discover } from './discover.js';
-import { scanFiles, unscannedOf, type FileResult } from './engine.js';
+import { scanFiles, unscannedOf, wholeFileUnscanned, type FileResult } from './engine.js';
 import { UsageError } from './errors.js';
-import { formatHuman, formatJson, skipLocation } from './output.js';
+import { formatHuman, formatJson, rel, skipLocation } from './output.js';
 import { VERSION } from './version.js';
 
 export interface Io {
@@ -133,6 +133,15 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
     const files = await discover(targets);
     const results = await scanFiles(files, options, { scrub: true, propagate: o.propagate });
     const unscanned = warnUnscanned(results, io);
+    if (o.out) {
+      // A copy of a file we could not scan is an unredacted copy: leave it out.
+      for (const r of results) {
+        if (!wholeFileUnscanned(r)) continue;
+        await rm(r.file, { force: true });
+        r.notCopied = true;
+        io.err(`tracescrub: warning: not copied to --out (could not be scanned): ${rel(r.file)}`);
+      }
+    }
     io.out(o.json ? formatJson(results, 'scrub') : formatHuman(results, { all: o.all, mode: 'scrub', allowUnscanned: o.allowUnscanned }));
     if (o.jsonOut) await writeFile(o.jsonOut, formatJson(results, 'scrub') + '\n');
     if (o.out && !o.json) io.out(`Output: ${path.resolve(o.out)}`);
