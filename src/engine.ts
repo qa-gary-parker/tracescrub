@@ -39,6 +39,8 @@ export interface ScanOptions {
   scrub: boolean;
   /** Harvest secrets found structurally (password fills, auth headers...) and redact them everywhere. Default true. */
   propagate?: boolean;
+  /** Receives warnings (never containing a secret). */
+  warn?: (msg: string) => void;
 }
 
 const toFinding = (f: RawFinding): Finding => ({
@@ -79,6 +81,8 @@ export async function replaceFile(file: string, data: Uint8Array): Promise<void>
 export async function scanFiles(files: string[], detOpts: DetectorOptions, opts: ScanOptions): Promise<FileResult[]> {
   const det = new Detector(detOpts);
   if (opts.propagate !== false) {
+    // rule -> distinct values that were too short to propagate (kept in memory only)
+    const short = new Map<string, Set<string>>();
     for (let round = 0; round < 3; round++) {
       const before = det.knownCount;
       for (const file of files) {
@@ -87,11 +91,21 @@ export async function scanFiles(files: string[], detOpts: DetectorOptions, opts:
           det,
           file,
           onHit: (h) => {
-            if (h.harvest) det.addKnown(h.value, h.rule);
+            if (!h.harvest || det.addKnown(h.value, h.rule)) return;
+            if (det.isTooShortToKnow(h.value)) {
+              if (!short.has(h.rule)) short.set(h.rule, new Set());
+              short.get(h.rule)!.add(h.value);
+            }
           },
         });
       }
       if (det.knownCount === before) break;
+    }
+    for (const [rule, values] of short) {
+      opts.warn?.(
+        `${values.size} value(s) found by rule ${rule} are shorter than ${det.minKnownLength} characters; ` +
+          'they are redacted where they were found but not searched for elsewhere (see minKnownLength)',
+      );
     }
   }
 

@@ -80,11 +80,22 @@ export class Detector implements RuleContext {
     return this.allowRegexes.some((r) => r.test(value));
   }
 
+  /** "Bearer <token>" -> just the token, so the scheme stays readable elsewhere. */
+  private static normalizeKnown(value: string): string {
+    return value.trim().replace(/^(?:Bearer|Basic|Token)\s+/i, '');
+  }
+
+  /** True when `value` would be dropped by {@link addKnown} only because it is shorter than `minKnownLength`. */
+  isTooShortToKnow(value: string): boolean {
+    if (typeof value !== 'string') return false;
+    const v = Detector.normalizeKnown(value);
+    return v.length > 0 && v.length < this.minKnownLength && !isRedacted(v) && !this.isAllowed(v);
+  }
+
   /** Register a literal secret. Returns false when it was ignored (too short, allowlisted, duplicate). */
   addKnown(value: string, rule: string): boolean {
     if (typeof value !== 'string') return false;
-    // "Bearer <token>" -> remember just the token, so the scheme stays readable elsewhere.
-    const v = value.trim().replace(/^(?:Bearer|Basic|Token)\s+/i, '');
+    const v = Detector.normalizeKnown(value);
     if (v.length < this.minKnownLength || isRedacted(v) || this.isAllowed(v)) return false;
     if (this.known.has(v)) return false;
     this.known.set(v, rule);

@@ -68,6 +68,23 @@ describe('check', () => {
     expect(r.code).toBe(1);
     const out = JSON.parse(r.stdout) as JsonOut;
     expect(out.findings).toEqual([expect.objectContaining({ rule: 'env:TEST_PASSWORD', location: 'line 1' })]);
+    expect(r.stderr).toContain('env var SHORT is shorter than 6 characters; ignoring it');
+    expect(r.stderr).not.toContain('abc');
+  });
+
+  it('warns when a harvested secret is too short to propagate', async () => {
+    const dir = tmp();
+    // "pw1" is redacted where it is found, but too short to be searched for everywhere else
+    writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ cookies: [{ name: 'session', value: 'pw1' }] }));
+    writeFileSync(path.join(dir, 'notes.txt'), 'nothing here\n');
+    const r = await run(['check', dir]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/warning: 1 value\(s\) found by rule cookie are shorter than 6 characters/);
+    expect(r.stderr).not.toContain('pw1');
+    // no warning once the minimum is lowered, or without propagation
+    writeFileSync(path.join(dir, 'cfg.json'), JSON.stringify({ minKnownLength: 3 }));
+    expect((await run(['check', dir, '--config', path.join(dir, 'cfg.json')])).stderr).not.toContain('shorter than');
+    expect((await run(['check', dir, '--no-propagate'])).stderr).not.toContain('shorter than');
   });
 
   it('reads --env-file values', async () => {

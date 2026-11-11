@@ -92,6 +92,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
     .showHelpAfterError()
     .configureOutput({ writeOut: (s) => io.out(s), writeErr: (s) => io.err(s) });
 
+  const warn = (m: string) => io.err(`tracescrub: warning: ${m}`);
   const detOpts = (o: CommonOpts) =>
     buildDetectorOptions({
       env: o.env,
@@ -99,7 +100,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
       config: o.config,
       cwd: io.cwd,
       environment: io.env,
-      warn: (m) => io.err(`tracescrub: warning: ${m}`),
+      warn,
     });
 
   addCommon(
@@ -110,7 +111,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
   ).action(async (paths: string[], o: CommonOpts) => {
     const options = detOpts(o);
     const files = await discover(paths);
-    const results = await scanFiles(files, options, { scrub: false, propagate: o.propagate });
+    const results = await scanFiles(files, options, { scrub: false, propagate: o.propagate, warn });
     const unscanned = warnUnscanned(results, io);
     io.out(o.json ? formatJson(results, 'check') : formatHuman(results, { all: o.all, mode: 'check', allowUnscanned: o.allowUnscanned }));
     if (o.jsonOut) await writeFile(o.jsonOut, formatJson(results, 'check') + '\n');
@@ -131,7 +132,7 @@ export async function main(argv: string[], io: Io = defaultIo): Promise<number> 
     await discover(paths); // validates the inputs before copying anything
     const targets = o.out ? await prepareOut(paths, o.out) : paths;
     const files = await discover(targets);
-    const results = await scanFiles(files, options, { scrub: true, propagate: o.propagate });
+    const results = await scanFiles(files, options, { scrub: true, propagate: o.propagate, warn });
     const unscanned = warnUnscanned(results, io);
     if (o.out) {
       // A copy of a file we could not scan is an unredacted copy: leave it out.

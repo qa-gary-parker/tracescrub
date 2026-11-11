@@ -121,6 +121,7 @@ export function buildDetectorOptions(o: SourceOptions): DetectorOptions {
   const environment = o.environment ?? process.env;
   const warn = o.warn ?? (() => {});
   const known: KnownValue[] = [];
+  const minLen = cfg.minKnownLength ?? 6;
   const names = [...(cfg.env ?? []), ...(o.env ?? [])]
     .flatMap((n) => n.split(','))
     .map((n) => n.trim())
@@ -128,7 +129,10 @@ export function buildDetectorOptions(o: SourceOptions): DetectorOptions {
   for (const name of new Set(names)) {
     const v = environment[name];
     if (v === undefined || v === '') warn(`env var ${name} is not set; skipping`);
-    else known.push({ value: v, rule: `env:${name}` });
+    else {
+      if (v.trim().length < minLen) warn(`env var ${name} is shorter than ${minLen} characters; ignoring it (see minKnownLength)`);
+      known.push({ value: v, rule: `env:${name}` });
+    }
   }
   for (const f of o.envFile ?? []) {
     if (!existsSync(f)) throw new UsageError(`env file not found: ${f}`);
