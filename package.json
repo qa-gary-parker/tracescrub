@@ -1,6 +1,6 @@
 {
   "name": "pw-tracescrub",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scrub secrets from Playwright traces, HAR files, reports and storageState before they become CI artifacts",
   "type": "module",
   "private": false,
