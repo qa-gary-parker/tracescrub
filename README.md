@@ -5,6 +5,8 @@ become CI artifacts.
 
 > Status: MVP / prototype. On npm as [`pw-tracescrub`](https://www.npmjs.com/package/pw-tracescrub); the CLI command is `tracescrub`.
 
+Overview and FAQ: [garyparker.dev/projects/tracescrub](https://garyparker.dev/projects/tracescrub)
+
 ## The problem
 
 Playwright artifacts are excellent for debugging, and that is exactly why they leak:
