@@ -60,5 +60,6 @@
     "@types/node": "^20.19.43",
     "typescript": "~5.9",
     "vitest": "^4.1.12"
-  }
+  },
+  "homepage": "https://garyparker.dev/projects/tracescrub"
 }
