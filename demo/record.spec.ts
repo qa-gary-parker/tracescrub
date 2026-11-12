@@ -1,4 +1,4 @@
-import { test, expect, type FrameLocator, type Locator } from '@playwright/test';
+import { test, expect, type FrameLocator, type Locator, type Page } from '@playwright/test';
 import { closeSync, cpSync, createReadStream, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -59,6 +59,27 @@ function serve(work: string, before: Buffer) {
       const { port } = server.address() as { port: number };
       resolve({ origin: `http://127.0.0.1:${port}`, close: () => server.close() });
     }));
+}
+
+// The right half stays empty for YouTube's end-screen elements
+async function endCard(page: Page, rows: [string, string][], summary: string) {
+  await page.evaluate(([rows, summary]) => {
+    const add = (parent: HTMLElement, css: string, text = '') => {
+      const el = parent.appendChild(document.createElement('div'));
+      el.style.cssText = css;
+      el.textContent = text;
+      return el;
+    };
+    const card = add(document.body, 'position:fixed;inset:0;z-index:100000;box-sizing:border-box;padding:112px 128px;background:#0B0D0C;color:#E6E8E3;font:36px/1.3 ui-monospace,Menlo,monospace');
+    const brand = add(card, 'display:flex;align-items:center;gap:16px;color:#3FB950;font-size:30px', 'gary-parker');
+    brand.prepend(Object.assign(document.createElement('span'), { style: 'width:20px;height:20px;border-radius:10px;background:#3FB950' }));
+    rows.forEach(([key, value], i) => {
+      add(card, `margin-top:${i ? 52 : 124}px;color:#8A9088;font-size:24px;letter-spacing:.12em;text-transform:uppercase`, key);
+      const row = add(card, 'margin-top:16px', value.replace(/^\$ /, ''));
+      if (value.startsWith('$ ')) row.prepend(Object.assign(document.createElement('span'), { textContent: '$ ', style: 'color:#3FB950' }));
+    });
+    add(card, 'position:absolute;left:128px;bottom:96px;color:#8A9088;font-size:26px', summary);
+  }, [rows, summary] as const);
 }
 
 async function mark(target: Locator, color: string) {
@@ -215,7 +236,11 @@ test('record the scrub demo', async ({ browser }, testInfo) => {
     await clear();
     await beat('Check again: 0 secrets left', 6000, 'Run check again: zero secrets left.', () => shell(checkCmd, recheckOut));
     await beat(`${secrets} found. 0 left. The trace still opens.`, 5500, `${secrets} secrets found, zero left, and the trace still opens.`);
-    await beat('npm i -D pw-tracescrub', 4500, 'Install it from npm: P W trace scrub.');
+    await beat('', 10000, 'Install it from npm: P W trace scrub. The links are in the description.', () => endCard(page, [
+      ['install', '$ npm i -D pw-tracescrub'],
+      ['source', 'github.com/qa-gary-parker/tracescrub'],
+      ['more tools + write-ups', 'garyparker.dev'],
+    ], `✓ ${secrets} secrets found   ✓ 0 left   ✓ trace still opens`));
   }
 
   const length = (Date.now() - start) / 1000;
