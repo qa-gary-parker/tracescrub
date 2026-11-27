@@ -5,7 +5,7 @@ become CI artifacts.
 
 > Status: MVP / prototype. On npm as [`pw-tracescrub`](https://www.npmjs.com/package/pw-tracescrub); the CLI command is `tracescrub`.
 
-Overview and FAQ: [garyparker.dev/projects/tracescrub](https://garyparker.dev/projects/tracescrub). Videos: [youtube.com/@garyparkerdev](https://www.youtube.com/@garyparkerdev)
+Overview and FAQ: [garyparker.dev/projects/tracescrub](https://garyparker.dev/projects/tracescrub). More tools: [garyparker.dev/projects](https://garyparker.dev/projects). Videos: [youtube.com/@garyparkerdev](https://www.youtube.com/@garyparkerdev)
 
 ## The problem
 
